@@ -1,0 +1,18 @@
+{
+  "judge_train": {
+    "file_name": "judge/train.json",
+    "formatting": "sharegpt"
+  },
+  "judge_val": {
+    "file_name": "judge/val.json",
+    "formatting": "sharegpt"
+  },
+  "poet_train": {
+    "file_name": "poet/train.json",
+    "formatting": "sharegpt"
+  },
+  "poet_val": {
+    "file_name": "poet/val.json",
+    "formatting": "sharegpt"
+  }
+}
