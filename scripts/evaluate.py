@@ -783,7 +783,8 @@ def generate_plots() -> None:
         print("WARNING: matplotlib not installed, skipping visualization.")
         return
 
-    plt.rcParams['font.family'] = ['Arial Unicode MS', 'SimHei', 'DejaVu Sans']
+    # macOS Chinese font priority (SimHei unavailable on macOS)
+    plt.rcParams['font.family'] = ['Songti SC', 'STHeiti', 'PingFang HK', 'Arial Unicode MS', 'DejaVu Sans']
     plt.rcParams['axes.unicode_minus'] = False
 
     BASE_COLOR = '#3498db'
