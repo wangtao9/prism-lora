@@ -19,24 +19,16 @@ MODE_MAP = {
 
 # System prompts for each mode
 JUDGE_SYSTEM_PROMPT = (
-    "You are a precise conflict detector for AI assistant responses. "
-    "Given two responses to the same user query, determine if they contain "
-    "a memory conflict (a factual disagreement that cannot both be true). "
-    "Respond in JSON format with the following fields:\n"
-    "- \"conflict\": boolean (true if there is a factual conflict)\n"
-    "- \"reason\": string (brief explanation of the conflict if found, "
-    "or \"No conflict detected\" if none)\n"
-    "- \"confidence\": float (0.0-1.0, your confidence in the assessment)"
+    "你是一个记忆冲突检测专家。给定旧记忆和新事实，你需要判断它们是否"
+    "在同一维度上存在冲突。如果冲突则输出UPDATE并用新事实替换旧记忆，"
+    "如果不冲突则输出KEEP让两条记忆共存。请以JSON格式输出："
+    "{\"decision\": \"UPDATE/KEEP\", \"reason\": \"...\", "
+    "\"updated_memory\": \"...\"}"
 )
 
 POET_SYSTEM_PROMPT = (
-    "You are a creative poet who crafts beautiful poetry. "
-    "When given a topic, compose a poem with the following format requirements:\n"
-    "- Title on the first line\n"
-    "- At least 4 lines of verse\n"
-    "- Each line should be meaningful and evocative\n"
-    "- Use vivid imagery and poetic language\n"
-    "- Optionally include a rhyme scheme"
+    "你是一位精通古诗词的创作大师，擅长根据要求创作符合格律和意境的古典诗词。"
+    "你的创作严格遵守古典诗词的体裁规范，包括字数、行数和押韵。"
 )
 
 BASE_SYSTEM_PROMPT = "You are a helpful AI assistant."
@@ -70,7 +62,7 @@ def query_once(client: OpenAI, mode: str, user_input: str, max_tokens: int = 256
             {"role": "user", "content": user_input},
         ],
         max_tokens=max_tokens,
-        temperature=0.7 if mode == "poet" else 0.3,
+        temperature=0.1 if mode == "judge" else 0.7,
     )
 
     return response.choices[0].message.content
@@ -124,22 +116,22 @@ def interactive_mode(client: OpenAI, max_tokens: int = 256) -> None:
 def demo_mode(client: OpenAI, max_tokens: int = 256) -> None:
     """Run a demo showing all three adapter modes with sample queries."""
     print("=" * 60)
-    print("Prism-LoRA Multi-Adapter Demo")
+    print("Prism-LoRA 多适配器推理演示")
     print("=" * 60)
     print()
 
     judge_query = (
-        "Response A says the capital of France is Paris. "
-        "Response B says the capital of France is Lyon. "
-        "Do these responses contain a conflict?"
+        "旧记忆：张三喜欢吃苹果\n"
+        "新事实：张三不喜欢吃苹果\n"
+        "请判断新事实与旧记忆的关系，并决定处理策略。"
     )
-    poet_query = "Write a poem about the sea at sunset."
-    base_query = "What is the capital of France?"
+    poet_query = "请写一首关于秋天的七言绝句，风格要求：意境深远。"
+    base_query = "你好，请介绍一下你自己。"
 
     for mode, query, label in [
-        ("judge", judge_query, "Judge Mode — Conflict Detection"),
-        ("poet", poet_query, "Poet Mode — Poetry Generation"),
-        ("base", base_query, "Base Model — Standard Q&A"),
+        ("judge", judge_query, "Judge 模式 — 记忆冲突检测"),
+        ("poet", poet_query, "Poet 模式 — 古诗创作"),
+        ("base", base_query, "基座模型 — 通用对话"),
     ]:
         print(f"--- {label} ---")
         print(f"Model: {MODE_MAP[mode]}")
@@ -152,7 +144,7 @@ def demo_mode(client: OpenAI, max_tokens: int = 256) -> None:
         print()
 
     print("=" * 60)
-    print("Demo complete. Use --interactive for live mode switching.")
+    print("演示完成。使用 --interactive 进入交互式切换模式。")
     print("=" * 60)
 
 
