@@ -1,0 +1,15 @@
+# 核心依赖 - 训练
+torch>=2.3.0
+transformers>=4.40.0
+peft>=0.11.0
+llamafactory>=0.7.0
+accelerate>=0.30.0
+
+# 核心依赖 - 推理
+vllm>=0.6.0
+
+# 评测辅助
+scikit-learn
+jieba
+openai
+numpy
