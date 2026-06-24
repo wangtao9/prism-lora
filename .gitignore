@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+
+# Training outputs
+outputs/
+adapters/
+
+# Generated data (can be regenerated via scripts/prepare_data.py)
+data/judge/train.json
+data/judge/val.json
+data/judge/test.json
+data/poet/train.json
+data/poet/val.json
+data/poet/test.json
+data/poet/raw_poetry/
+
+# Eval results
+results/*.json
+results/*.png
+results/comparison.md
+
+# Model weights & caches
+*.bin
+*.safetensors
+*.gguf
+*.pt
+*.pth
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+venv/
+.venv/
+env/
+
+# LLaMAFactory intermediate
+llamafactory_data/
