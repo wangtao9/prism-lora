@@ -68,8 +68,10 @@ LIKES_FLIP = {
 
 NUMERIC_VALUES = [
     ("人口", CITIES, ["800万", "1000万", "1200万", "1500万", "2000万", "2200万", "2500万", "3000万"]),
-    ("面积", CITIES, ["500平方公里", "800平方公里", "1000平方公里", "1200平方公里", "1500平方公里"]),
+    ("面积", CITIES, ["500平方公里", "800平方公里", "1000平方公里", "1200平方公里", "1500平方公里", "2000平方公里"]),
     ("成立年份", COMPANIES, ["1998年", "2000年", "2003年", "2008年", "2010年", "2012年", "2015年"]),
+    ("员工数", COMPANIES, ["5000人", "1万人", "2万人", "5万人", "8万人", "10万人", "15万人"]),
+    ("在校生人数", SCHOOLS, ["2万人", "3万人", "4万人", "5万人", "6万人", "8万人"]),
 ]
 
 SAME_ATTR_DIFF_OBJ = [
@@ -99,8 +101,8 @@ def generate_update_conflict_samples(n):
     """生成同维度值冲突(喜好反转)和同维度数值更新的UPDATE样本"""
     samples = []
 
-    # 喜好反转: ~90% of n
-    n_like = int(n * 0.9)
+    # 喜好反转: ~80% of n, 数值更新: ~20% of n (5类数值属性)
+    n_like = int(n * 0.8)
     for _ in range(n_like):
         person = random.choice(PERSONS)
         like = random.choice(list(LIKES_FLIP.keys()))
@@ -123,7 +125,7 @@ def generate_update_conflict_samples(n):
             ]
         })
 
-    # 数值更新: ~10% of n
+    # 数值更新: ~20% of n (5类: 人口/面积/成立年份/员工数/在校生)
     n_numeric = n - n_like
     for _ in range(n_numeric):
         attr_name, entities, values = random.choice(NUMERIC_VALUES)
