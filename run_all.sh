@@ -53,12 +53,10 @@ echo ""
 
 # Step 5: 运行评测
 echo "=== Step 5: Running evaluation ==="
-python scripts/evaluate.py
-echo ""
-
-# Step 6: 生成对比报告
-echo "=== Step 6: Generating comparison report ==="
-python scripts/evaluate.py --report
+python -m eval.judge_eval
+python -m eval.poet_eval
+python -m eval.cross_eval
+python -m eval.plot_results
 echo ""
 
 # cleanup: stop vLLM
