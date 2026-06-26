@@ -19,10 +19,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-# ---------------------------------------------------------------------------
-# macOS Chinese font configuration
-# ---------------------------------------------------------------------------
-plt.rcParams['font.family'] = ['Songti SC', 'STHeiti', 'PingFang HK', 'Arial Unicode MS', 'DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
 
 # ---------------------------------------------------------------------------

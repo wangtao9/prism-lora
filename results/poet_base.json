@@ -1,0 +1,19 @@
+{
+  "format_compliance": 0.0,
+  "rhyme_compliance": 0.0,
+  "topic_relevance": 0.55,
+  "diversity": 0.4014,
+  "per_form_metrics": {
+    "五言绝句": {
+      "count": 172,
+      "avg_format_compliance": 0.15,
+      "avg_rhyme_compliance": 0.0
+    },
+    "七言绝句": {
+      "count": 328,
+      "avg_format_compliance": 0.15,
+      "avg_rhyme_compliance": 0.0
+    }
+  },
+  "total": 500
+}
