@@ -21,20 +21,18 @@ import time
 from openai import AsyncOpenAI
 from sklearn.metrics import accuracy_score, f1_score
 
+from configs.config import BASE_MODEL, JUDGE_ADAPTER, POET_ADAPTER, VLLM_BASE_URL
+
 # Import from sibling modules
 from eval.judge_eval import (
-    BASE_MODEL as JUDGE_BASE_MODEL,
-    JUDGE_ADAPTER,
-    MODE_MAP,
     JUDGE_SYSTEM_PROMPT,
+    MODE_MAP,
     parse_judge_response,
     query_vllm_async,
     load_test_data,
     TASK_PARAMS,
 )
 from eval.poet_eval import (
-    BASE_MODEL as POET_BASE_MODEL,
-    POET_ADAPTER,
     POET_SYSTEM_PROMPT,
     FORM_SPEC,
     detect_expected_form,
@@ -43,9 +41,6 @@ from eval.poet_eval import (
     evaluate_rhyme_compliance,
     evaluate_topic_relevance,
 )
-
-# Use the same base model identifier
-BASE_MODEL = JUDGE_BASE_MODEL
 
 # ---------------------------------------------------------------------------
 # Project paths

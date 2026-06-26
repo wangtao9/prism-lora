@@ -10,34 +10,15 @@ import sys
 
 from openai import OpenAI
 
-# Model name mapping for each adapter mode
-MODE_MAP = {
-    "judge": "judge",
-    "poet": "poet",
-    "base": "Qwen/Qwen2.5-1.5B-Instruct",
-}
-
-# System prompts for each mode
-JUDGE_SYSTEM_PROMPT = (
-    "你是一个记忆冲突检测专家。给定旧记忆和新事实，你需要判断它们是否"
-    "在同一维度上存在冲突。如果冲突则输出UPDATE并用新事实替换旧记忆，"
-    "如果不冲突则输出KEEP让两条记忆共存。请以JSON格式输出："
-    "{\"decision\": \"UPDATE/KEEP\", \"reason\": \"...\", "
-    "\"updated_memory\": \"...\"}"
+from configs.config import (
+    BASE_MODEL,
+    MODE_MAP,
+    JUDGE_SYSTEM_PROMPT,
+    POET_SYSTEM_PROMPT,
+    BASE_SYSTEM_PROMPT,
+    SYSTEM_PROMPT_MAP,
+    VLLM_BASE_URL,
 )
-
-POET_SYSTEM_PROMPT = (
-    "你是一位精通古诗词的创作大师，擅长根据要求创作符合格律和意境的古典诗词。"
-    "你的创作严格遵守古典诗词的体裁规范，包括字数、行数和押韵。"
-)
-
-BASE_SYSTEM_PROMPT = "You are a helpful AI assistant."
-
-SYSTEM_PROMPT_MAP = {
-    "judge": JUDGE_SYSTEM_PROMPT,
-    "poet": POET_SYSTEM_PROMPT,
-    "base": BASE_SYSTEM_PROMPT,
-}
 
 
 def query_once(client: OpenAI, mode: str, user_input: str, max_tokens: int = 256) -> str:
@@ -173,8 +154,8 @@ def main() -> None:
     parser.add_argument(
         "--port",
         type=int,
-        default=8000,
-        help="vLLM server port (default: 8000)",
+        default=VLLM_BASE_URL.split(":")[-1].rstrip("/v1"),
+        help=f"vLLM server port (default: {VLLM_BASE_URL.split(":")[-1].rstrip('/v1')})",
     )
     parser.add_argument(
         "--max-tokens",

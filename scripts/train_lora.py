@@ -7,8 +7,9 @@ prism-lora LoRA 训练脚本
   python scripts/train_lora.py --task judge
   python scripts/train_lora.py --task poet
 
-数据集注册使用 data/dataset_info.json + configs/ 中 dataset_dir: data 的相对路径方式，
-与 LLaMAFactory 标准用法一致，无需自定义 llamafactory_data 目录。
+训练 YAML 使用 ${base_model}、${template}、${flash_attn} 等占位符，
+运行时由 render_yaml() 从 configs/config.yaml 读取值并渲染到临时文件，
+源模板不会被修改。
 """
 
 import argparse
@@ -19,7 +20,11 @@ import sys
 # 项目根目录
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# 任务 → YAML 配置映射
+# 从统一配置导入
+sys.path.insert(0, PROJECT_ROOT)
+from configs.config import BASE_MODEL, render_yaml
+
+# 任务 → YAML 模板映射
 TASK_CONFIG = {
     "judge": os.path.join(PROJECT_ROOT, "configs", "judge_lora.yaml"),
     "poet": os.path.join(PROJECT_ROOT, "configs", "poet_lora.yaml"),
@@ -66,22 +71,27 @@ def main():
     args = parser.parse_args()
 
     task = args.task
-    config_file = TASK_CONFIG[task]
+    template_file = TASK_CONFIG[task]
 
-    if not os.path.isfile(config_file):
-        print(f"Error: config file not found: {config_file}")
+    if not os.path.isfile(template_file):
+        print(f"Error: config template not found: {template_file}")
         sys.exit(1)
 
-    # 验证数据集注册（LLaMAFactory 通过 dataset_dir: data + dataset_info.json 自动处理）
+    # 验证数据集注册
     check_dataset_info(task)
 
-    # 构建命令（LLaMAFactory 会自动从 YAML 中的 dataset_dir 找 dataset_info.json）
-    cmd = ["llamafactory-cli", "train", config_file]
-    print(f"Running: {cmd}")
-    print(f"  Config: {config_file}")
-    print(f"  Dataset lookup: data/dataset_info.json (relative paths, dataset_dir=data)")
+    # 渲染 YAML 模板：将 ${base_model}、${template}、${flash_attn} 等占位符
+    # 替换为 configs/config.yaml 中的实际值，输出到临时文件
+    rendered_config = render_yaml(template_file)
+    print(f"  Template: {template_file}")
+    print(f"  Rendered: {rendered_config}")
+    print(f"  Model:    {BASE_MODEL}")
 
-    # 执行训练（LLaMAFactory 用 YAML 中 dataset_dir=data 自动定位）
+    # 构建命令（LLaMAFactory 使用渲染后的临时 YAML）
+    cmd = ["llamafactory-cli", "train", rendered_config]
+    print(f"Running: {' '.join(cmd)}")
+
+    # 执行训练
     try:
         result = subprocess.run(cmd, cwd=PROJECT_ROOT, check=True)
         print(f"Training completed successfully (exit code {result.returncode})")
@@ -92,6 +102,11 @@ def main():
         print("Error: llamafactory-cli not found. Please install LLaMAFactory:")
         print("  pip install llamafactory")
         sys.exit(1)
+    finally:
+        # 清理临时文件
+        if os.path.exists(rendered_config):
+            os.remove(rendered_config)
+            print(f"  Cleaned up: {rendered_config}")
 
 
 if __name__ == "__main__":

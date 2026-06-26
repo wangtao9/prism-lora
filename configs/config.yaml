@@ -1,0 +1,27 @@
+# prism-lora 统一配置
+# 所有脚本（训练、推理、测评）共用此文件，改模型只需改这里。
+#
+# 环境变量覆盖（优先级最高）：
+#   PRISM_BASE_MODEL   — 基座模型路径
+#   PRISM_VLLM_PORT     — vLLM 服务端口
+
+# 基座模型（本地路径或 HuggingFace ID）
+base_model: /home/wt/models/Qwen2.5-1.5B-Instruct
+
+# HuggingFace 模型 ID（仅用于回退下载）
+hf_model_id: Qwen/Qwen2.5-1.5B-Instruct
+
+# vLLM 服务
+vllm_port: 8000
+vllm_gpu_util: 0.85
+vllm_max_model_len: 2048
+
+# LoRA 适配器名称（与 vLLM --lora-modules 注册名一致）
+judge_adapter: judge
+poet_adapter: poet
+
+# LLaMAFactory 训练模板
+template: qwen
+
+# Flash Attention 类型: fa2 / fa3 / sdpa / eager
+flash_attn: fa2

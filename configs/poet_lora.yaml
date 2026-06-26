@@ -1,5 +1,5 @@
 ### Model
-model_name_or_path: Qwen/Qwen2.5-1.5B-Instruct
+model_name_or_path: ${base_model}
 
 ### Method
 stage: sft
@@ -13,7 +13,7 @@ lora_target: all
 ### Dataset
 dataset: poet_train
 dataset_dir: data
-template: qwen2_5
+template: ${template}
 cutoff_len: 256
 overwrite_cache: true
 preprocessing_num_workers: 4
@@ -36,7 +36,7 @@ warmup_ratio: 0.1
 bf16: true
 
 ### Memory Optimization
-flash_attn_fa2: true
+flash_attn: ${flash_attn}
 gradient_checkpointing: true
 
 ### Validation

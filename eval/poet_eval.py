@@ -19,22 +19,18 @@ from collections import Counter
 
 from openai import AsyncOpenAI
 
+from configs.config import (
+    BASE_MODEL,
+    POET_ADAPTER,
+    POET_SYSTEM_PROMPT,
+    VLLM_BASE_URL,
+)
+
 # ---------------------------------------------------------------------------
 # Project paths
 # ---------------------------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-POET_SYSTEM_PROMPT = (
-    "你是一位精通古诗词的创作大师，擅长根据要求创作符合格律和意境的古典诗词。"
-    "你的创作严格遵守古典诗词的体裁规范，包括字数、行数和押韵。"
-)
-
-BASE_MODEL = "Qwen/Qwen2.5-1.5B-Instruct"
-POET_ADAPTER = "poet"
 
 # ---------------------------------------------------------------------------
 # Poetry form specifications

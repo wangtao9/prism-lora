@@ -1,18 +1,46 @@
 #!/bin/bash
 set -e
 
-# ─── Configuration ──────────────────────────────────────────────
-MODEL="Qwen/Qwen2.5-1.5B-Instruct"
-PORT=8000
-GPU_UTIL=0.85
-MAX_MODEL_LEN=2048
-
+# ─── Configuration (from configs/config.yaml) ──────────────────
+# Read values via Python one-liner for portable YAML parsing.
+# Environment variables override YAML values.
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
-# ─── Find LoRA checkpoint paths ─────────────────────────────────
-# LLaMAFactory outputs to outputs/{task}_lora/checkpoint-* directories
-# Auto-discover the latest checkpoint for each adapter
+# Parse model path: env var > yaml > fallback
+if [ -n "$PRISM_BASE_MODEL" ]; then
+    MODEL="$PRISM_BASE_MODEL"
+else
+    MODEL="$(cd "$BASE_DIR" && python3 -c "
+import yaml, os
+with open('configs/config.yaml') as f: cfg=yaml.safe_load(f)
+print(cfg['base_model'])
+")"
+fi
 
+# Parse vllm port
+if [ -n "$PRISM_VLLM_PORT" ]; then
+    VLLM_PORT="$PRISM_VLLM_PORT"
+else
+    VLLM_PORT="$(cd "$BASE_DIR" && python3 -c "
+import yaml
+with open('configs/config.yaml') as f: cfg=yaml.safe_load(f)
+print(cfg['vllm_port'])
+")"
+fi
+
+GPU_UTIL="$(cd "$BASE_DIR" && python3 -c "
+import yaml
+with open('configs/config.yaml') as f: cfg=yaml.safe_load(f)
+print(cfg['vllm_gpu_util'])
+")"
+
+MAX_MODEL_LEN="$(cd "$BASE_DIR" && python3 -c "
+import yaml
+with open('configs/config.yaml') as f: cfg=yaml.safe_load(f)
+print(cfg['vllm_max_model_len'])
+")"
+
+# ─── Find LoRA checkpoint paths ─────────────────────────────────
 JUDGE_PATH=$(ls -td "${BASE_DIR}/outputs/judge_lora/checkpoint-*" 2>/dev/null | head -1)
 POET_PATH=$(ls -td "${BASE_DIR}/outputs/poet_lora/checkpoint-*" 2>/dev/null | head -1)
 
@@ -44,7 +72,7 @@ echo "=== Starting vLLM Server with Multi-LoRA ==="
 echo "Base model: $MODEL"
 echo "Judge LoRA: $JUDGE_PATH"
 echo "Poet LoRA:  $POET_PATH"
-echo "Port: $PORT"
+echo "Port: $VLLM_PORT"
 echo ""
 
 # ─── Launch vLLM ───────────────────────────────────────────────
@@ -56,7 +84,7 @@ CUDA_VISIBLE_DEVICES=0 vllm serve "$MODEL" \
     --dtype auto \
     --gpu-memory-utilization "$GPU_UTIL" \
     --max-model-len "$MAX_MODEL_LEN" \
-    --port "$PORT" \
+    --port "$VLLM_PORT" \
     --lora-modules "judge=$JUDGE_PATH" "poet=$POET_PATH"
 
 # Note: vllm serve blocks until the server is stopped.

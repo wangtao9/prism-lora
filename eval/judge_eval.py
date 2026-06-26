@@ -24,40 +24,21 @@ from sklearn.metrics import (
     precision_recall_fscore_support,
 )
 
+from configs.config import (
+    BASE_MODEL,
+    JUDGE_ADAPTER,
+    MODE_MAP,
+    JUDGE_SYSTEM_PROMPT,
+    BASE_SYSTEM_PROMPT,
+    SYSTEM_PROMPT_MAP,
+    VLLM_BASE_URL,
+)
+
 # ---------------------------------------------------------------------------
 # Project paths
 # ---------------------------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
-
-# ---------------------------------------------------------------------------
-# Model / prompt constants
-# ---------------------------------------------------------------------------
-BASE_MODEL = "Qwen/Qwen2.5-1.5B-Instruct"
-JUDGE_ADAPTER = "judge"
-
-MODE_MAP = {
-    "base": BASE_MODEL,
-    "judge": JUDGE_ADAPTER,
-    "poet": "poet",
-}
-
-JUDGE_SYSTEM_PROMPT = (
-    "你是一个记忆冲突检测专家。给定旧记忆和新事实，你需要判断它们是否"
-    "在同一维度上存在冲突。如果冲突则输出UPDATE并用新事实替换旧记忆，"
-    "如果不冲突则输出KEEP让旧记忆保持不变。"
-)
-
-BASE_SYSTEM_PROMPT = "You are a helpful AI assistant."
-
-SYSTEM_PROMPT_MAP = {
-    "judge": JUDGE_SYSTEM_PROMPT,
-    "poet": (
-        "你是一位精通古诗词的创作大师，擅长根据要求创作符合格律和意境的古典诗词。"
-        "你的创作严格遵守古典诗词的体裁规范，包括字数、行数和押韵。"
-    ),
-    "base": BASE_SYSTEM_PROMPT,
-}
 
 # ---------------------------------------------------------------------------
 # Temperature / token presets
@@ -249,7 +230,6 @@ async def evaluate_judge_model(
         report = classification_report(
             y_true_valid, y_pred_valid,
             labels=["UPDATE", "KEEP"],
-            pos_label="UPDATE",
             output_dict=True,
             zero_division=0,
         )

@@ -1,3 +1,6 @@
+# 配置管理
+pyyaml>=6.0
+
 # 核心依赖 - 训练
 torch>=2.4.0
 transformers>=4.46.0

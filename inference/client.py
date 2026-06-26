@@ -3,30 +3,21 @@
 import asyncio
 from openai import AsyncOpenAI
 
-BASE_MODEL = "Qwen/Qwen2.5-1.5B-Instruct"
-JUDGE_ADAPTER = "judge"
-POET_ADAPTER = "poet"
-
-JUDGE_SYSTEM_PROMPT = (
-    "你是一个记忆冲突检测专家。给定旧记忆和新事实，你需要判断它们是否"
-    "在同一维度上存在冲突。如果冲突则输出UPDATE并用新事实替换旧记忆，"
-    "如果不冲突则输出KEEP让两条记忆共存。请以JSON格式输出："
-    "{\"decision\": \"UPDATE/KEEP\", \"reason\": \"...\", "
-    "\"updated_memory\": \"...\"}"
+from configs.config import (
+    BASE_MODEL,
+    JUDGE_ADAPTER,
+    POET_ADAPTER,
+    JUDGE_SYSTEM_PROMPT,
+    POET_SYSTEM_PROMPT,
+    BASE_SYSTEM_PROMPT,
+    VLLM_BASE_URL,
 )
-
-POET_SYSTEM_PROMPT = (
-    "你是一位精通古诗词的创作大师，擅长根据要求创作符合格律和意境的古典诗词。"
-    "你的创作严格遵守古典诗词的体裁规范，包括字数、行数和押韵。"
-)
-
-BASE_SYSTEM_PROMPT = "你是一个有用的AI助手。"
 
 
 class PrismClient:
     """Async client for multi-adapter LoRA inference via vLLM."""
 
-    def __init__(self, base_url="http://localhost:8000/v1", api_key="dummy"):
+    def __init__(self, base_url=VLLM_BASE_URL, api_key="dummy"):
         self.client = AsyncOpenAI(base_url=base_url, api_key=api_key)
 
     async def judge(self, old_memory: str, new_fact: str, temperature: float = 0.1) -> str:
