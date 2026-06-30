@@ -27,7 +27,6 @@ prism-lora/
 ├── scripts/
 │   ├── prepare_data.py         # Judge 数据合成（5 种样本类型 × 18 模板 × 6 输出格式）
 │   ├── generate_poet_data.py   # Poet 数据生成（LLM API + 平水韵验证）
-│   ├── _gen_poet_local.py      # Poet 数据备份（手写原创诗歌，无需 API）
 │   ├── train_lora.py           # LoRA 训练（LLaMAFactory CLI）
 │   ├── start_vllm.sh           # vLLM 多适配器服务启动
 │   ├── stop_vllm.sh            # vLLM 服务停止
@@ -58,7 +57,6 @@ prism-lora/
 - Python 3.10+
 - NVIDIA GPU（16GB+ VRAM）
 - CUDA 11.8+
-- （可选）`ANTHROPIC_API_KEY`：使用 Claude API 生成 Poet 训练数据
 
 ## 快速开始
 
@@ -81,7 +79,7 @@ bash run_all.sh
 ```bash
 # 1. 合成数据
 python scripts/prepare_data.py                     # Judge 数据
-ANTHROPIC_API_KEY=xxx python scripts/generate_poet_data.py  # Poet 数据（需 API Key）
+LLM_API_KEY=xxx python scripts/generate_poet_data.py  # Poet 数据（需 API Key）
 
 # 2. 训练 LoRA（需要 GPU）
 python scripts/train_lora.py --task judge
@@ -138,9 +136,9 @@ reply = await client.base_model("你好")
 
 | 模型 | Accuracy | F1(UPDATE) | F1(KEEP) | Valid/Total |
 |------|----------|------------|----------|-------------|
-| base (Qwen2.5-1.5B) | 0.5000 | 0.6667 | 0.0000 | 300/300 |
+| base (Qwen2.5-1.5B) | 0.6067 | 0.7552 | 0.0000 | 300/300 |
 | **judge** | **1.0000** | **1.0000** | **1.0000** | 300/300 |
-| poet (cross) | 0.5300 | 0.6928 | — | 100/100 |
+| poet (cross) | 0.5800 | 0.7342 | — | 100/100 |
 
 > ⚠️ Judge LoRA 测试集完美准确率，疑似**过拟合/记忆答案**。
 
@@ -148,19 +146,19 @@ reply = await client.base_model("你好")
 
 | 模型 | format_compliance | rhyme_compliance | topic_relevance | diversity |
 |------|-------------------|------------------|-----------------|-----------|
-| base (Qwen2.5-1.5B) | 0.0000 | 0.0000 | 0.5500 | 0.4014 |
-| judge (cross) | 0.1802 | 0.0200 | 0.6629 | — |
-| **poet** | **0.0000** | **0.1960** | 0.3120 | 0.1407 |
+| base (Qwen2.5-1.5B) | 0.0021 | 0.2117 | 0.4067 | 0.3964 |
+| judge (cross) | 0.1489 | 0.1550 | 0.5937 | — |
+| **poet** | **0.2704** | **0.3816** | 0.3124 | 0.2892 |
 
-> Poet LoRA 押韵合规性有所提升（0→0.196），但格式合规性仍为 0，主题相关性与多样性下降。
+> Poet LoRA 格式合规性大幅提升（0.0021→0.2704），押韵合规性也明显提升（0.2117→0.3816），但主题相关性与多样性下降。
 
 ### 交叉领域特化矩阵（100 样本子集）
 
 | Model | Conflict(Acc) | Conflict(F1) | Poet(Form) | Poet(Rhyme) |
 |-------|---------------|--------------|------------|-------------|
-| Base Model | 0.5300 | 0.6928 | 0.1515 | 0.0000 |
-| Judge LoRA | 1.0000 | 1.0000 | 0.1802 | 0.0200 |
-| Poet LoRA | 0.5300 | 0.6928 | 0.2390 | 0.1500 |
+| Base Model | 0.5800 | 0.7342 | 0.1500 | 0.1700 |
+| Judge LoRA | 1.0000 | 1.0000 | 0.1489 | 0.1550 |
+| Poet LoRA | 0.5800 | 0.7342 | 0.2995 | 0.3000 |
 
 ### 可视化
 
@@ -172,12 +170,12 @@ reply = await client.base_model("你好")
 
 | 条件 | 描述 | 结果 | Delta |
 |------|------|:----:|-------|
-| C1 | Judge LoRA 在 Judge 任务上提升 | ✅ PASS | +0.4700 |
+| C1 | Judge LoRA 在 Judge 任务上提升 | ✅ PASS | +0.4200 |
 | C2 | Poet LoRA 在 Judge 任务上不提升 | ✅ PASS | +0.0000 |
-| C3 | Poet LoRA 在 Poet 任务上提升 | ❌ FAIL | +0.0875 |
-| C4 | Judge LoRA 在 Poet 任务上不提升 | ✅ PASS | +0.0287 |
+| C3 | Poet LoRA 在 Poet 任务上提升 | ✅ PASS | +0.1495 |
+| C4 | Judge LoRA 在 Poet 任务上不提升 | ✅ PASS | -0.0011 |
 
-**结论：✗ NOT PROVEN** — Judge LoRA 过拟合导致 C1 结果不可信，Poet LoRA 改善不足导致 C3 未通过。
+**结论：✓ TRUE SPECIALIZATION（形式上通过）** — 4 条件形式上全部通过，但 C1 建立在 Judge LoRA 过拟合（测试集完美准确率）基础上，不能反映真实泛化能力。
 
 ## 评测体系
 
@@ -257,10 +255,10 @@ reply = await client.base_model("你好")
    - 使用独立保留测试集重新评估
    - 增加训练数据多样性（更多模板、更多实体类型）
    - 添加正则化（增大 dropout、增加 weight decay）
-2. **Poet LoRA 效果有限**：格式合规性近乎 0，仅押韵有轻微改善
-   - 增加训练数据量与诗体覆盖（律诗数据不足）
+2. **Poet LoRA 主题相关性与多样性下降**：格式合规性与押韵合规性提升明显，但主题相关性（0.4067→0.3124）与多样性（0.3964→0.2892）反而下降
+   - 增加训练数据量与主题覆盖（律诗数据不足）
    - 考虑更大的 LoRA rank 或多阶段训练
-   - 引入格式奖励信号（RLHF / DPO）
+   - 引入主题/多样性奖励信号（RLHF / DPO）
 3. **评测管线不完整**：`report.md` 尚未集成到自动评测流程
    - 将报告生成集成到 `eval/plot_results.py` 或新建 `eval/report_gen.py`
    - 从 JSON 数据自动填充数值，避免手工维护
@@ -273,6 +271,6 @@ reply = await client.base_model("你好")
 | 训练框架 | LLaMAFactory (SFT + LoRA) |
 | 推理引擎 | vLLM（多适配器模式，`--enable-lora`） |
 | 评测 | scikit-learn + 自定义指标（平水韵、格式合规、主题匹配） |
-| 数据生成 | Claude API / GLM-4-flash |
+| 数据生成 | DeepSeek-V4-Pro |
 | 可视化 | matplotlib (YlOrRd colormap) |
 | 异步推理 | openAI Python SDK (async) |
