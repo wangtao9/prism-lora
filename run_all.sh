@@ -13,6 +13,16 @@ echo "=== Step 1: Generating training data ==="
 python scripts/prepare_data.py
 echo ""
 
+# Step 1a: Generate poet data via Claude API (requires ANTHROPIC_API_KEY)
+echo "=== Step 1a: Poet data generation (Claude API) ==="
+if [ -z "$ANTHROPIC_API_KEY" ]; then
+    echo "WARNING: ANTHROPIC_API_KEY not set. Skipping poet data generation."
+    echo "Set ANTHROPIC_API_KEY and run: python scripts/generate_poet_data.py"
+else
+    python scripts/generate_poet_data.py
+fi
+echo ""
+
 # Step 2: 训练 Judge LoRA
 echo "=== Step 2: Training Judge LoRA ==="
 python scripts/train_lora.py --task judge

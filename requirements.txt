@@ -21,3 +21,6 @@ numpy
 pandas>=2.1.0
 matplotlib>=3.8.0
 aiohttp>=3.9.0
+
+# 数据生成
+python-dotenv>=1.0.0

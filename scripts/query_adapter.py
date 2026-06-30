@@ -6,7 +6,11 @@ demonstrating multi-adapter LoRA serving with dynamic routing.
 """
 
 import argparse
+import os
 import sys
+
+# 确保项目根目录在 sys.path 最前面，避免 import 到第三方同名包
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from openai import OpenAI
 

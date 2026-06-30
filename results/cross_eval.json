@@ -1,8 +1,8 @@
 {
   "base_judge": {
     "model": "/home/wt/models/Qwen2.5-1.5B-Instruct",
-    "accuracy": 0.53,
-    "f1_update": 0.6928
+    "accuracy": 0.58,
+    "f1_update": 0.7342
   },
   "judge_judge": {
     "model": "judge",
@@ -11,25 +11,25 @@
   },
   "poet_judge": {
     "model": "poet",
-    "accuracy": 0.53,
-    "f1_update": 0.6928
+    "accuracy": 0.58,
+    "f1_update": 0.7342
   },
   "base_poet": {
     "model": "/home/wt/models/Qwen2.5-1.5B-Instruct",
-    "avg_form_compliance": 0.1515,
-    "avg_rhyme_compliance": 0.0,
-    "avg_topic_relevance": 0.5561
+    "avg_form_compliance": 0.15,
+    "avg_rhyme_compliance": 0.17,
+    "avg_topic_relevance": 0.5377
   },
   "poet_poet": {
     "model": "poet",
-    "avg_form_compliance": 0.239,
-    "avg_rhyme_compliance": 0.15,
-    "avg_topic_relevance": 0.3331
+    "avg_form_compliance": 0.2995,
+    "avg_rhyme_compliance": 0.3,
+    "avg_topic_relevance": 0.4545
   },
   "judge_poet": {
     "model": "judge",
-    "avg_form_compliance": 0.1802,
-    "avg_rhyme_compliance": 0.02,
-    "avg_topic_relevance": 0.6629
+    "avg_form_compliance": 0.1489,
+    "avg_rhyme_compliance": 0.155,
+    "avg_topic_relevance": 0.5937
   }
 }

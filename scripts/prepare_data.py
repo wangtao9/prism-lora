@@ -1,12 +1,20 @@
 #!/usr/bin/env python3
 """
-prism-lora 数据合成脚本
-为 Judge LoRA（记忆冲突检测）和 Poet LoRA（古诗写作）生成训练/验证/测试数据
+prism-lora 数据合成脚本（Judge LoRA 部分）
+为 Judge LoRA（记忆冲突检测）生成训练/验证/测试数据。
+Poet LoRA 数据由 scripts/generate_poet_data.py 使用 Claude API 生成。
+
+改进：
+  - 输入模板多样化（18 种措辞变体）
+  - 输出格式多样化（6 种格式变体，均含 UPDATE/KEEP 关键词）
+  - 实体池扩展（50 人名 + 新增 PLACES/EVENTS）
+  - 新增 generate_contextual_update_samples（多句叙事记忆，15%）
+  - 测试集使用训练集未见的输入/输出模板（泛化验证）
+
 输出格式: LLaMAFactory sharegpt JSON, 3-round conversations (system + human + gpt)
 
 数据目录结构:
   data/judge/train.json, val.json, test.json
-  data/poet/train.json, val.json, test.json
   data/dataset_info.json
 """
 
@@ -30,6 +38,12 @@ PERSONS = [
     "孙八", "周九", "吴十", "郑明", "陈芳",
     "刘伟", "杨丽", "黄强", "林静", "何勇",
     "马云飞", "徐小凤", "朱大成", "秦玉兰", "许志远",
+    "宋海波", "高晓东", "郑秋月", "曹建华", "谢文斌",
+    "韩雪梅", "唐志强", "冯国栋", "邓丽君", "彭学文",
+    "苏婉清", "卢天佑", "蒋慧敏", "蔡文姬", "贾思思",
+    "丁一凡", "魏子涵", "薛冰洁", "叶知秋", "阎明复",
+    "于子轩", "方婷婷", "邹思远", "石磊", "程晓峰",
+    "傅雨桐", "沈静远", "任浩然", "钟文博", "姚思源",
 ]
 
 OBJECTS = [
@@ -43,18 +57,40 @@ CITIES = [
     "北京", "上海", "广州", "深圳", "成都",
     "杭州", "武汉", "南京", "重庆", "西安",
     "长沙", "青岛", "大连", "厦门", "苏州",
+    "天津", "郑州", "合肥", "昆明", "贵阳",
+    "福州", "济南", "沈阳", "哈尔滨", "长春",
+    "南昌", "太原", "兰州", "呼和浩特", "海口",
 ]
 
 COMPANIES = [
     "蚂蚁集团", "阿里巴巴", "腾讯", "百度", "字节跳动",
     "华为", "小米", "京东", "美团", "滴滴",
     "网易", "快手", "拼多多", "比亚迪", "大疆",
+    "中兴", "联想", "格力", "海尔", "美的",
+    "OPPO", "vivo", "微博", "知乎", "B站",
 ]
 
 SCHOOLS = [
     "清华大学", "北京大学", "浙江大学", "复旦大学", "上海交通大学",
     "南京大学", "武汉大学", "中山大学", "四川大学", "哈尔滨工业大学",
     "中国人民大学", "同济大学", "北京航空航天大学", "东南大学", "西安交通大学",
+    "南开大学", "天津大学", "山东大学", "厦门大学", "吉林大学",
+]
+
+PLACES = [
+    "长城", "故宫", "西湖", "黄山", "泰山",
+    "兵马俑", "九寨沟", "张家界", "峨眉山", "布达拉宫",
+    "丽江古城", "鼓浪屿", "三亚湾", "莫高窟", "都江堰",
+    "颐和园", "天坛", "拙政园", "武夷山", "千岛湖",
+    "稻城亚丁", "泸沽湖", "青海湖", "纳木错", "喀纳斯",
+    "凤凰古城", "平遥古城", "承德避暑山庄", "云冈石窟", "龙门石窟",
+]
+
+EVENTS = [
+    "春节", "元宵节", "清明节", "端午节", "七夕节",
+    "中秋节", "重阳节", "国庆节", "劳动节", "元旦",
+    "双十一", "618", "毕业季", "招聘季", "开学季",
+    "春运", "庙会", "灯会", "马拉松", "音乐节",
 ]
 
 LIKES = ["喜欢", "不喜欢", "爱吃", "不爱吃", "擅长", "不擅长", "热爱", "讨厌", "偏好", "厌恶"]
@@ -92,235 +128,132 @@ DIFF_DOMAIN_PAIRS = [
     ("身高", "就职公司"),
 ]
 
-
 # ============================================================
-# Judge LoRA: 数据生成函数 (UPDATE / KEEP 四种类型)
-# ============================================================
-
-def generate_update_conflict_samples(n):
-    """生成同维度值冲突(喜好反转)和同维度数值更新的UPDATE样本"""
-    samples = []
-
-    # 喜好反转: ~80% of n, 数值更新: ~20% of n (5类数值属性)
-    n_like = int(n * 0.8)
-    for _ in range(n_like):
-        person = random.choice(PERSONS)
-        like = random.choice(list(LIKES_FLIP.keys()))
-        obj = random.choice(OBJECTS[:10])
-        old_memory = f"{person}{like}{obj}"
-        flipped = LIKES_FLIP[like]
-        new_fact = f"{person}{flipped}{obj}"
-
-        input_text = f"旧记忆：{old_memory}\n新事实：{new_fact}\n请判断新事实与旧记忆的关系，并决定处理策略。"
-        reason_text = f"新事实与旧记忆在同维度上直接冲突：{person}对{obj}的态度从'{like}'变为'{flipped}'，属于喜好反转，应更新记忆。"
-
-        output_dict = {"decision": "UPDATE", "reason": reason_text, "updated_memory": new_fact}
-        output_text = json.dumps(output_dict, ensure_ascii=False)
-
-        samples.append({
-            "conversations": [
-                {"from": "system", "value": JUDGE_SYSTEM_PROMPT},
-                {"from": "human", "value": input_text},
-                {"from": "gpt", "value": output_text},
-            ]
-        })
-
-    # 数值更新: ~20% of n (5类: 人口/面积/成立年份/员工数/在校生)
-    n_numeric = n - n_like
-    for _ in range(n_numeric):
-        attr_name, entities, values = random.choice(NUMERIC_VALUES)
-        entity = random.choice(entities)
-        old_val = random.choice(values)
-        remaining = [v for v in values if v != old_val]
-        new_val = random.choice(remaining) if remaining else old_val
-
-        old_memory = f"{entity}{attr_name}{old_val}"
-        new_fact = f"{entity}{attr_name}{new_val}"
-
-        input_text = f"旧记忆：{old_memory}\n新事实：{new_fact}\n请判断新事实与旧记忆的关系，并决定处理策略。"
-        reason_text = f"新事实对旧记忆中的数值进行了更新：{entity}的{attr_name}从'{old_val}'更新为'{new_val}'，属于数值更新，应更新记忆。"
-
-        output_dict = {"decision": "UPDATE", "reason": reason_text, "updated_memory": new_fact}
-        output_text = json.dumps(output_dict, ensure_ascii=False)
-
-        samples.append({
-            "conversations": [
-                {"from": "system", "value": JUDGE_SYSTEM_PROMPT},
-                {"from": "human", "value": input_text},
-                {"from": "gpt", "value": output_text},
-            ]
-        })
-
-    return samples
-
-
-def generate_update_attribute_samples(n):
-    """生成属性反转(擅长/不擅长等)的UPDATE样本"""
-    samples = []
-
-    ATTRS_FLIPPABLE = [
-        ("擅长", "不擅长"),
-        ("精通", "不精通"),
-        ("熟悉", "不熟悉"),
-        ("了解", "不了解"),
-        ("掌握", "未掌握"),
-    ]
-    SKILL_OBJECTS = ["数学", "编程", "绘画", "音乐", "写作",
-                     "游泳", "英语", "演讲", "舞蹈", "钢琴",
-                     "书法", "摄影", "烹饪", "中医", "围棋"]
-
-    for _ in range(n):
-        person = random.choice(PERSONS)
-        pos_attr, neg_attr = random.choice(ATTRS_FLIPPABLE)
-        skill = random.choice(SKILL_OBJECTS)
-
-        if random.random() < 0.5:
-            old_attr, new_attr = pos_attr, neg_attr
-        else:
-            old_attr, new_attr = neg_attr, pos_attr
-
-        old_memory = f"{person}{old_attr}{skill}"
-        new_fact = f"{person}{new_attr}{skill}"
-
-        input_text = f"旧记忆：{old_memory}\n新事实：{new_fact}\n请判断新事实与旧记忆的关系，并决定处理策略。"
-        reason_text = f"新事实与旧记忆在同维度上直接冲突：{person}对{skill}的能力描述从'{old_attr}'变为'{new_attr}'，属于属性反转，应更新记忆。"
-
-        output_dict = {"decision": "UPDATE", "reason": reason_text, "updated_memory": new_fact}
-        output_text = json.dumps(output_dict, ensure_ascii=False)
-
-        samples.append({
-            "conversations": [
-                {"from": "system", "value": JUDGE_SYSTEM_PROMPT},
-                {"from": "human", "value": input_text},
-                {"from": "gpt", "value": output_text},
-            ]
-        })
-
-    return samples
-
-
-def generate_keep_different_dimension_samples(n):
-    """生成同属性不同对象(不同维度共存)的KEEP样本"""
-    samples = []
-
-    for _ in range(n):
-        attr, objects = random.choice(SAME_ATTR_DIFF_OBJ)
-        person = random.choice(PERSONS)
-
-        obj1 = random.choice(objects)
-        remaining = [o for o in objects if o != obj1]
-        obj2 = random.choice(remaining) if remaining else obj1
-
-        old_memory = f"{person}{attr}{obj1}"
-        new_fact = f"{person}{attr}{obj2}"
-
-        input_text = f"旧记忆：{old_memory}\n新事实：{new_fact}\n请判断新事实与旧记忆的关系，并决定处理策略。"
-        reason_text = f"新事实与旧记忆属于同属性的不同维度：{person}可以同时'{attr}{obj1}'和'{attr}{obj2}'，两者并不冲突，应保持共存。"
-
-        output_dict = {"decision": "KEEP", "reason": reason_text, "updated_memory": f"{old_memory}；{new_fact}"}
-        output_text = json.dumps(output_dict, ensure_ascii=False)
-
-        samples.append({
-            "conversations": [
-                {"from": "system", "value": JUDGE_SYSTEM_PROMPT},
-                {"from": "human", "value": input_text},
-                {"from": "gpt", "value": output_text},
-            ]
-        })
-
-    return samples
-
-
-def generate_keep_different_domain_samples(n):
-    """生成完全不同领域共存(不同领域)的KEEP样本"""
-    samples = []
-
-    DOMAIN_A_VALUES = [
-        ("年龄", ["25岁", "28岁", "30岁", "35岁", "40岁", "45岁", "50岁"]),
-        ("体重", ["60公斤", "65公斤", "70公斤", "75公斤", "80公斤"]),
-        ("身高", ["170厘米", "175厘米", "180厘米", "185厘米"]),
-        ("学历", ["本科", "硕士", "博士", "大专"]),
-    ]
-    DOMAIN_B_VALUES = [
-        ("职业", ["工程师", "教师", "医生", "律师", "设计师", "程序员", "研究员"]),
-        ("工作地点", CITIES),
-        ("就职于", COMPANIES),
-        ("毕业于", SCHOOLS),
-        ("爱好", ["读书", "旅行", "摄影", "绘画", "音乐", "烹饪"]),
-    ]
-
-    for _ in range(n):
-        person = random.choice(PERSONS)
-        domain_a_name, domain_a_vals = random.choice(DOMAIN_A_VALUES)
-        domain_b_name, domain_b_vals = random.choice(DOMAIN_B_VALUES)
-
-        val_a = random.choice(domain_a_vals)
-        val_b = random.choice(domain_b_vals)
-
-        old_memory = f"{person}{domain_a_name}{val_a}"
-        new_fact = f"{person}{domain_b_name}{val_b}"
-
-        input_text = f"旧记忆：{old_memory}\n新事实：{new_fact}\n请判断新事实与旧记忆的关系，并决定处理策略。"
-        reason_text = f"新事实与旧记忆属于完全不同的领域：'{domain_a_name}'和'{domain_b_name}'互不干扰，两者可以共存，应保持旧记忆不变。"
-
-        output_dict = {"decision": "KEEP", "reason": reason_text, "updated_memory": f"{old_memory}；{new_fact}"}
-        output_text = json.dumps(output_dict, ensure_ascii=False)
-
-        samples.append({
-            "conversations": [
-                {"from": "system", "value": JUDGE_SYSTEM_PROMPT},
-                {"from": "human", "value": input_text},
-                {"from": "gpt", "value": output_text},
-            ]
-        })
-
-    return samples
-
-
-# ============================================================
-# Poet LoRA: 系统提示与配置
+# 输入模板多样化（18 种措辞变体）
+# 前 14 个用于训练/验证，后 4 个仅用于测试（模板隔离）
 # ============================================================
 
-POET_SYSTEM_PROMPT = (
-    "你是一位精通古诗词的创作大师，擅长根据要求创作符合格律和意境的古典诗词。"
-    "你的创作严格遵守古典诗词的体裁规范，包括字数、行数和押韵。"
-)
+JUDGE_INPUT_TEMPLATES = [
+    # 训练/验证模板 (0-13)
+    "旧记忆：{old}\n新事实：{new}\n请判断新事实与旧记忆的关系，并决定处理策略。",
+    "已知记录：{old}\n现收到新信息：{new}\n应该如何处理？",
+    "数据库中存储：{old}\n用户输入了：{new}\n是否需要更新？",
+    "当前记忆：{old}\n最新事实：{new}\n请分析两者关系并做出判断。",
+    "记忆库现有：{old}\n系统收到新消息：{new}\n判断是否冲突。",
+    "背景信息：{old}\n补充信息：{new}\n请判断补充信息是否需要替换背景信息。",
+    "已有知识：{old}\n新近获悉：{new}\n是否存在冲突？请给出判断。",
+    "记录显示：{old}\n但最近得知：{new}\n两者矛盾吗？如何处理？",
+    "存储的记忆为：{old}\n接收到的更新为：{new}\n请决定是更新还是保留。",
+    "旧有记载：{old}\n今日听闻：{new}\n是否需要更正？",
+    "档案中的记录：{old}\n刚收到的新数据：{new}\n请判断是否需要修档。",
+    "我们之前了解到：{old}\n现在有人告知：{new}\n这两条信息矛盾吗？",
+    "系统留存：{old}\n用户修正：{new}\n请判断修正是否合理并决定处理方式。",
+    "原有记忆：{old}\n变更信息：{new}\n请评估是否需要更新记忆。",
 
-POETRY_FORMS = ["五言绝句", "七言绝句", "五言律诗", "七言律诗"]
-
-FORM_SPEC = {
-    "五言绝句": {"lines": 4, "chars_per_line": 5},
-    "七言绝句": {"lines": 4, "chars_per_line": 7},
-    "五言律诗": {"lines": 8, "chars_per_line": 5},
-    "七言律诗": {"lines": 8, "chars_per_line": 7},
-}
-
-TOPICS = [
-    "春雨", "秋月", "山水", "离别", "思乡", "登高", "夜思",
-    "梅花", "荷花", "柳树", "春风", "秋霜", "雪景", "落日",
-    "污水", "渔舟", "田园", "边塞", "故人", "归途",
-    "月夜", "寒夜", "晨曦", "暮色", "远行", "怀古",
-    "照湖", "听雨", "咏竹", "望远",
+    # 测试专用模板 (14-17) — 训练集不使用
+    "根据之前的记录，{old}。但现在有人说{new}。这该怎么处理？",
+    "我们历来认为{old}，然而最新消息表明{new}，是否需要更新看法？",
+    "此前保存的信息是「{old}」，现在来了一条「{new}」，请判断并处理。",
+    "记忆系统中「{old}」与刚收到的「{new}」是否矛盾？给出你的判断。",
 ]
 
-POETS_TO_IMITATE = [
-    "杜甫", "李白", "王维", "白居易", "苏轼", "陆游",
-    "孟浩然", "刘禹锡", "柳宗元", "韩愈", "贺知章", "王昌龄",
-]
-
-INSTRUCTION_TEMPLATES = [
-    "写一首{form}，以{topic}为题。",
-    "请创作一首{form}，描写{topic}的意境。",
-    "以{topic}为主题，创作一首{form}。要求意境深远。",
-    "模仿{poet}的风格，写一首关于{topic}的{form}。",
-    "请以{poet}的笔触，描绘{topic}，体裁为{form}。",
-    "创作{form}一首，咏{topic}。",
-    "用{form}的形式，表达对{topic}的感受。",
-    "以{topic}入诗，作{form}一首。",
-]
+# 测试专用模板的索引范围
+TEST_ONLY_TEMPLATE_START = 14
 
 # ============================================================
-# Poet LoRA: 真实古诗数据库 (从参考实现复制, 98首经典古诗)
+# 输出格式多样化（6 种格式变体）
+# 前 4 个用于训练/验证，后 2 个仅用于测试
+# 所有格式都包含 UPDATE/KEEP 关键词，确保 eval 解析兼容
+# ============================================================
+
+def format_output_json(decision: str, reason: str, updated_memory: str) -> str:
+    """格式 1：JSON（原始格式）"""
+    output_dict = {"decision": decision, "reason": reason, "updated_memory": updated_memory}
+    return json.dumps(output_dict, ensure_ascii=False)
+
+def format_output_natural(decision: str, reason: str, updated_memory: str) -> str:
+    """格式 2：自然语言"""
+    action = "更新记忆，用新事实替换" if decision == "UPDATE" else "保留两条记忆共存"
+    return f"经判断，应{decision}，{reason}。{action}。"
+
+def format_output_structured(decision: str, reason: str, updated_memory: str) -> str:
+    """格式 3：结构化文本"""
+    return f"判断结果：{decision}\n原因：{reason}\n更新后记忆：{updated_memory}"
+
+def format_output_concise(decision: str, reason: str, updated_memory: str) -> str:
+    """格式 4：简洁格式"""
+    return f"{decision}。理由：{reason}"
+
+def format_output_explain(decision: str, reason: str, updated_memory: str) -> str:
+    """格式 5：解释型（测试专用）"""
+    action = "需要更新" if decision == "UPDATE" else "无需更新"
+    return f"我的判断是{decision}。{action}，因为{reason}。处理后记忆变为：{updated_memory}"
+
+def format_output_markdown(decision: str, reason: str, updated_memory: str) -> str:
+    """格式 6：Markdown 格式（测试专用）"""
+    return f"**判断**：{decision}\n**理由**：{reason}\n**处理后**：{updated_memory}"
+
+JUDGE_OUTPUT_FORMATTERS = [
+    format_output_json,       # 0: 训练/验证
+    format_output_natural,    # 1: 训练/验证
+    format_output_structured, # 2: 训练/验证
+    format_output_concise,    # 3: 训练/验证
+    format_output_explain,    # 4: 测试专用
+    format_output_markdown,   # 5: 测试专用
+]
+
+TEST_ONLY_FORMATTER_START = 4
+
+
+# ============================================================
+# 上下文叙事记忆模板（用于 generate_contextual_update_samples）
+# ============================================================
+
+CONTEXT_TEMPLATES = [
+    # 住址变更
+    ("{person}是一名资深工程师，在{company}工作了十年。他目前住在{city}。",
+     "{person}刚刚搬迁到了{city2}，已经完成了住址变更手续。",
+     "{person}的居住地从{city}变更为{city2}，属于同一维度的信息更新，应替换旧记忆。"),
+
+    # 职位变更
+    ("{person}在{company}担任技术总监，已经在这个岗位干了五年。",
+     "{person}最近被提拔为{company}的副总裁。",
+     "{person}的职位从'技术总监'变更为'副总裁'，属于同一维度的直接冲突，应更新记忆。"),
+
+    # 联系方式变更
+    ("据记录，{person}的手机号是138xxxx1234，电子邮箱是旧邮箱。",
+     "{person}换了新手机号159xxxx5678，请更新联系方式。",
+     "{person}的手机号从'138xxxx1234'变为'159xxxx5678'，联系方式同维度更新，应替换。"),
+
+    # 状态变更
+    ("{person}目前还是单身，住在{city}市中心的一间公寓里。",
+     "{person}上个月已经结婚了，配偶是大学同学。",
+     "{person}的婚姻状态从'单身'变为'已婚'，同维度直接冲突，应更新记忆。"),
+
+    # 学历变更
+    ("{person}本科毕业于{school}，之后一直在{company}工作。",
+     "{person}刚刚拿到了{school2}的博士学位。",
+     "{person}的学历信息有更新：新增博士学位信息。同维度信息更新，应替换相关记忆。"),
+
+    # 公司信息变更
+    ("{company}是一家成立于2000年的互联网公司，主营社交产品。",
+     "据报道，{company}已经转型为一家人工智能公司，主营业务彻底改变。",
+     "{company}的主营业务从'社交产品'变为'人工智能'，同维度直接冲突，应更新。"),
+
+    # 地点信息变更
+    ("{place}是著名的旅游景点，每年吸引数百万游客。",
+     "据最新消息，{place}因修缮工程暂时关闭，不再接待游客。",
+     "{place}的开放状态从'开放'变为'关闭'，同维度冲突，应更新记忆。"),
+
+    # 事件状态变更
+    ("{event}期间，全国各景区通常会迎来游客高峰。",
+     "今年{event}各景区实行限流措施，游客量大幅下降。",
+     "{event}期间景区状态从'高峰'变为'限流'，同维度信息更新，应替换旧记忆。"),
+]
+
+
+# ============================================================
+# Poet LoRA: 真实古诗数据库（仅作风格参考，不用于训练数据）
 # ============================================================
 
 POEMS_DB = {
@@ -426,147 +359,298 @@ POEMS_DB = {
 
 
 # ============================================================
-# Poet LoRA: 诗歌体裁检测与指令生成
+# Judge LoRA: 数据生成函数 (UPDATE / KEEP 五种类型)
 # ============================================================
 
-def detect_poetry_form(text: str) -> str | None:
-    """Detect poetry form from text."""
-    lines = []
-    for line in text.strip().split("\n"):
-        # Remove punctuation and whitespace for counting
-        cleaned = re.sub(r'[，。！？；：、""''（）《》\s]', '', line.strip())
-        if cleaned and len(cleaned) >= 3:
-            lines.append(cleaned)
-
-    if not lines:
-        return None
-
-    n_lines = len(lines)
-    avg_chars = sum(len(l) for l in lines) / len(lines)
-
-    if n_lines == 4 and avg_chars <= 5.5:
-        return "五言绝句"
-    elif n_lines == 4 and avg_chars >= 6.5:
-        return "七言绝句"
-    elif n_lines == 8 and avg_chars <= 5.5:
-        return "五言律诗"
-    elif n_lines == 8 and avg_chars >= 6.5:
-        return "七言律诗"
-    elif n_lines == 4:
-        if sum(1 for l in lines if len(l) == 5) >= 2:
-            return "五言绝句"
-        elif sum(1 for l in lines if len(l) == 7) >= 2:
-            return "七言绝句"
-    elif n_lines == 8:
-        if sum(1 for l in lines if len(l) == 5) >= 4:
-            return "五言律诗"
-        elif sum(1 for l in lines if len(l) == 7) >= 4:
-            return "七言律诗"
-
-    return None
-
-
-def generate_instruction(poem: dict, template_idx: int = None, topic_override: str = None) -> str:
-    """Generate an instruction prompt for a given poem."""
-    form = poem["form"]
-
-    # Topic selection
-    if topic_override:
-        topic = topic_override
+def _format_judge_output(decision: str, reason: str, updated_memory: str, formatter_idx: int | None = None) -> str:
+    """使用指定的输出格式化器。None 表示随机选择（训练/验证范围）。"""
+    if formatter_idx is not None:
+        formatter = JUDGE_OUTPUT_FORMATTERS[formatter_idx % len(JUDGE_OUTPUT_FORMATTERS)]
     else:
-        title = poem.get("title", "")
-        text = poem.get("text", "")
-        matched_topics = [t for t in TOPICS if t in title or t in text]
+        formatter = random.choice(JUDGE_OUTPUT_FORMATTERS[:TEST_ONLY_FORMATTER_START])
+    return formatter(decision, reason, updated_memory)
 
-        if matched_topics:
-            topic = random.choice(matched_topics)
-        else:
-            topic = random.choice(TOPICS)
 
-    # Poet to imitate: use original author if available, otherwise random
-    author = poem.get("author", "")
-    poet_choice = author if author in POETS_TO_IMITATE and random.random() < 0.4 else random.choice(POETS_TO_IMITATE)
-
+def _format_judge_input(old: str, new: str, template_idx: int | None = None) -> str:
+    """使用指定的输入模板。None 表示随机选择（训练/验证范围）。"""
     if template_idx is not None:
-        template = INSTRUCTION_TEMPLATES[template_idx % len(INSTRUCTION_TEMPLATES)]
+        template = JUDGE_INPUT_TEMPLATES[template_idx % len(JUDGE_INPUT_TEMPLATES)]
     else:
-        template = random.choice(INSTRUCTION_TEMPLATES)
+        template = random.choice(JUDGE_INPUT_TEMPLATES[:TEST_ONLY_TEMPLATE_START])
+    return template.format(old=old, new=new)
 
-    return template.format(form=form, topic=topic, poet=poet_choice)
+
+def generate_update_conflict_samples(n, template_idx=None, formatter_idx=None):
+    """生成同维度值冲突(喜好反转)和同维度数值更新的UPDATE样本"""
+    samples = []
+
+    # 喜好反转: ~80% of n
+    n_like = int(n * 0.8)
+    for _ in range(n_like):
+        person = random.choice(PERSONS)
+        like = random.choice(list(LIKES_FLIP.keys()))
+        obj = random.choice(OBJECTS[:10])
+        old_memory = f"{person}{like}{obj}"
+        flipped = LIKES_FLIP[like]
+        new_fact = f"{person}{flipped}{obj}"
+
+        input_text = _format_judge_input(old_memory, new_fact, template_idx)
+        reason_text = f"新事实与旧记忆在同维度上直接冲突：{person}对{obj}的态度从'{like}'变为'{flipped}'，属于喜好反转，应更新记忆。"
+        output_text = _format_judge_output("UPDATE", reason_text, new_fact, formatter_idx)
+
+        samples.append({
+            "conversations": [
+                {"from": "system", "value": JUDGE_SYSTEM_PROMPT},
+                {"from": "human", "value": input_text},
+                {"from": "gpt", "value": output_text},
+            ]
+        })
+
+    # 数值更新: ~20% of n
+    n_numeric = n - n_like
+    for _ in range(n_numeric):
+        attr_name, entities, values = random.choice(NUMERIC_VALUES)
+        entity = random.choice(entities)
+        old_val = random.choice(values)
+        remaining = [v for v in values if v != old_val]
+        new_val = random.choice(remaining) if remaining else old_val
+
+        old_memory = f"{entity}{attr_name}{old_val}"
+        new_fact = f"{entity}{attr_name}{new_val}"
+
+        input_text = _format_judge_input(old_memory, new_fact, template_idx)
+        reason_text = f"新事实对旧记忆中的数值进行了更新：{entity}的{attr_name}从'{old_val}'更新为'{new_val}'，属于数值更新，应更新记忆。"
+        output_text = _format_judge_output("UPDATE", reason_text, new_fact, formatter_idx)
+
+        samples.append({
+            "conversations": [
+                {"from": "system", "value": JUDGE_SYSTEM_PROMPT},
+                {"from": "human", "value": input_text},
+                {"from": "gpt", "value": output_text},
+            ]
+        })
+
+    return samples
+
+
+def generate_update_attribute_samples(n, template_idx=None, formatter_idx=None):
+    """生成属性反转(擅长/不擅长等)的UPDATE样本"""
+    samples = []
+
+    ATTRS_FLIPPABLE = [
+        ("擅长", "不擅长"),
+        ("精通", "不精通"),
+        ("熟悉", "不熟悉"),
+        ("了解", "不了解"),
+        ("掌握", "未掌握"),
+    ]
+    SKILL_OBJECTS = ["数学", "编程", "绘画", "音乐", "写作",
+                     "游泳", "英语", "演讲", "舞蹈", "钢琴",
+                     "书法", "摄影", "烹饪", "中医", "围棋"]
+
+    for _ in range(n):
+        person = random.choice(PERSONS)
+        pos_attr, neg_attr = random.choice(ATTRS_FLIPPABLE)
+        skill = random.choice(SKILL_OBJECTS)
+
+        if random.random() < 0.5:
+            old_attr, new_attr = pos_attr, neg_attr
+        else:
+            old_attr, new_attr = neg_attr, pos_attr
+
+        old_memory = f"{person}{old_attr}{skill}"
+        new_fact = f"{person}{new_attr}{skill}"
+
+        input_text = _format_judge_input(old_memory, new_fact, template_idx)
+        reason_text = f"新事实与旧记忆在同维度上直接冲突：{person}对{skill}的能力描述从'{old_attr}'变为'{new_attr}'，属于属性反转，应更新记忆。"
+        output_text = _format_judge_output("UPDATE", reason_text, new_fact, formatter_idx)
+
+        samples.append({
+            "conversations": [
+                {"from": "system", "value": JUDGE_SYSTEM_PROMPT},
+                {"from": "human", "value": input_text},
+                {"from": "gpt", "value": output_text},
+            ]
+        })
+
+    return samples
+
+
+def generate_keep_different_dimension_samples(n, template_idx=None, formatter_idx=None):
+    """生成同属性不同对象(不同维度共存)的KEEP样本"""
+    samples = []
+
+    for _ in range(n):
+        attr, objects = random.choice(SAME_ATTR_DIFF_OBJ)
+        person = random.choice(PERSONS)
+
+        obj1 = random.choice(objects)
+        remaining = [o for o in objects if o != obj1]
+        obj2 = random.choice(remaining) if remaining else obj1
+
+        old_memory = f"{person}{attr}{obj1}"
+        new_fact = f"{person}{attr}{obj2}"
+
+        input_text = _format_judge_input(old_memory, new_fact, template_idx)
+        reason_text = f"新事实与旧记忆属于同属性的不同维度：{person}可以同时'{attr}{obj1}'和'{attr}{obj2}'，两者并不冲突，应保持共存。"
+        output_text = _format_judge_output("KEEP", reason_text, f"{old_memory}；{new_fact}", formatter_idx)
+
+        samples.append({
+            "conversations": [
+                {"from": "system", "value": JUDGE_SYSTEM_PROMPT},
+                {"from": "human", "value": input_text},
+                {"from": "gpt", "value": output_text},
+            ]
+        })
+
+    return samples
+
+
+def generate_keep_different_domain_samples(n, template_idx=None, formatter_idx=None):
+    """生成完全不同领域共存(不同领域)的KEEP样本"""
+    samples = []
+
+    DOMAIN_A_VALUES = [
+        ("年龄", ["25岁", "28岁", "30岁", "35岁", "40岁", "45岁", "50岁"]),
+        ("体重", ["60公斤", "65公斤", "70公斤", "75公斤", "80公斤"]),
+        ("身高", ["170厘米", "175厘米", "180厘米", "185厘米"]),
+        ("学历", ["本科", "硕士", "博士", "大专"]),
+    ]
+    DOMAIN_B_VALUES = [
+        ("职业", ["工程师", "教师", "医生", "律师", "设计师", "程序员", "研究员"]),
+        ("工作地点", CITIES),
+        ("就职于", COMPANIES),
+        ("毕业于", SCHOOLS),
+        ("爱好", ["读书", "旅行", "摄影", "绘画", "音乐", "烹饪"]),
+    ]
+
+    for _ in range(n):
+        person = random.choice(PERSONS)
+        domain_a_name, domain_a_vals = random.choice(DOMAIN_A_VALUES)
+        domain_b_name, domain_b_vals = random.choice(DOMAIN_B_VALUES)
+
+        val_a = random.choice(domain_a_vals)
+        val_b = random.choice(domain_b_vals)
+
+        old_memory = f"{person}{domain_a_name}{val_a}"
+        new_fact = f"{person}{domain_b_name}{val_b}"
+
+        input_text = _format_judge_input(old_memory, new_fact, template_idx)
+        reason_text = f"新事实与旧记忆属于完全不同的领域：'{domain_a_name}'和'{domain_b_name}'互不干扰，两者可以共存，应保持旧记忆不变。"
+        output_text = _format_judge_output("KEEP", reason_text, f"{old_memory}；{new_fact}", formatter_idx)
+
+        samples.append({
+            "conversations": [
+                {"from": "system", "value": JUDGE_SYSTEM_PROMPT},
+                {"from": "human", "value": input_text},
+                {"from": "gpt", "value": output_text},
+            ]
+        })
+
+    return samples
+
+
+def generate_contextual_update_samples(n, template_idx=None, formatter_idx=None):
+    """生成上下文叙事型 UPDATE 样本：用多句叙事包裹记忆"""
+    samples = []
+
+    for _ in range(n):
+        template = random.choice(CONTEXT_TEMPLATES)
+        old_narrative, new_info, reason = template
+
+        # 填充占位符
+        person = random.choice(PERSONS)
+        company = random.choice(COMPANIES)
+        city = random.choice(CITIES)
+        city2 = random.choice([c for c in CITIES if c != city])
+        school = random.choice(SCHOOLS)
+        school2 = random.choice([s for s in SCHOOLS if s != school])
+        place = random.choice(PLACES)
+        event = random.choice(EVENTS)
+
+        old_filled = old_narrative.format(person=person, company=company, city=city, city2=city2,
+                                          school=school, school2=school2, place=place, event=event)
+        new_filled = new_info.format(person=person, company=company, city=city, city2=city2,
+                                     school=school, school2=school2, place=place, event=event)
+        reason_filled = reason.format(person=person, company=company, city=city, city2=city2,
+                                      school=school, school2=school2, place=place, event=event)
+
+        input_text = _format_judge_input(old_filled, new_filled, template_idx)
+        # 上下文样本的 updated_memory 用简短形式
+        updated = new_filled if len(new_filled) < 60 else new_filled[:57] + "..."
+        output_text = _format_judge_output("UPDATE", reason_filled, updated, formatter_idx)
+
+        samples.append({
+            "conversations": [
+                {"from": "system", "value": JUDGE_SYSTEM_PROMPT},
+                {"from": "human", "value": input_text},
+                {"from": "gpt", "value": output_text},
+            ]
+        })
+
+    return samples
 
 
 # ============================================================
-# Poet LoRA: 数据生成
+# Judge LoRA: 数据生成 (组合五种类型)
 # ============================================================
 
-def generate_poet_samples():
-    """从 POEMS_DB 生成古诗写作的训练样本: 每首诗×8模板+N随机变体"""
-    # Build poem pool with detected forms
-    all_poems = []
-    for form, poems in POEMS_DB.items():
-        for poem in poems:
-            form_detected = detect_poetry_form(poem["text"])
-            if form_detected is None:
-                form_detected = form
-            all_poems.append({
-                "title": poem["title"],
-                "author": poem["author"],
-                "text": poem["text"],
-                "form": form_detected,
-            })
+def generate_judge_samples(total, seed_value, is_test=False):
+    """生成指定数量的 Judge LoRA 样本。
 
-    target_total = 2000 + 200 + 300  # train + val + test
-    n_per_poem = 30  # enough variants to reach 2500 total
-
-    records = []
-    for poem in all_poems:
-        # 8 template variations (one per template)
-        for t_idx in range(len(INSTRUCTION_TEMPLATES)):
-            instruction = generate_instruction(poem, template_idx=t_idx)
-            response = f"{poem['title']}\n\n{poem['text']}"
-            records.append({
-                "conversations": [
-                    {"from": "system", "value": POET_SYSTEM_PROMPT},
-                    {"from": "human", "value": instruction},
-                    {"from": "gpt", "value": response},
-                ]
-            })
-
-        # Additional random variations (different topics per same poem)
-        additional = n_per_poem - len(INSTRUCTION_TEMPLATES)
-        for _ in range(additional):
-            instruction = generate_instruction(poem, template_idx=None)
-            response = f"{poem['title']}\n\n{poem['text']}"
-            records.append({
-                "conversations": [
-                    {"from": "system", "value": POET_SYSTEM_PROMPT},
-                    {"from": "human", "value": instruction},
-                    {"from": "gpt", "value": response},
-                ]
-            })
-
-    random.shuffle(records)
-    return records
-
-
-# ============================================================
-# Judge LoRA: 数据生成 (组合四种类型)
-# ============================================================
-
-def generate_judge_samples(total, seed_value):
-    """生成指定数量的 Judge LoRA 样本，保持各类型比例"""
+    训练/验证：使用模板 0-13，格式 0-3
+    测试：使用模板 14-17 + 部分 0-13，格式 4-5 + 部分 0-3
+    """
     random.seed(seed_value)
 
-    n_conflict = int(total * 0.40)
+    # 类型比例（新增 contextual 占 15%）
+    n_conflict = int(total * 0.35)
     n_attribute = int(total * 0.10)
-    n_diff_dim = int(total * 0.30)
-    n_diff_domain = total - n_conflict - n_attribute - n_diff_dim
+    n_diff_dim = int(total * 0.25)
+    n_diff_domain = int(total * 0.15)
+    n_contextual = total - n_conflict - n_attribute - n_diff_dim - n_diff_domain
 
-    samples = []
-    samples.extend(generate_update_conflict_samples(n_conflict))
-    samples.extend(generate_update_attribute_samples(n_attribute))
-    samples.extend(generate_keep_different_dimension_samples(n_diff_dim))
-    samples.extend(generate_keep_different_domain_samples(n_diff_domain))
+    # 测试集：50% 用隔离模板/格式，50% 用常规
+    if is_test:
+        # 一半样本用测试专用模板和格式
+        half = total // 2
+        n_conflict_test = int(half * 0.35)
+        n_attribute_test = int(half * 0.10)
+        n_diff_dim_test = int(half * 0.25)
+        n_diff_domain_test = int(half * 0.15)
+        n_contextual_test = half - n_conflict_test - n_attribute_test - n_diff_dim_test - n_diff_domain_test
+
+        # 测试专用模板/格式
+        test_template_idx = random.choice(range(TEST_ONLY_TEMPLATE_START, len(JUDGE_INPUT_TEMPLATES)))
+        test_formatter_idx = random.choice(range(TEST_ONLY_FORMATTER_START, len(JUDGE_OUTPUT_FORMATTERS)))
+
+        samples = []
+        samples.extend(generate_update_conflict_samples(n_conflict_test, template_idx=test_template_idx, formatter_idx=test_formatter_idx))
+        samples.extend(generate_update_attribute_samples(n_attribute_test, template_idx=test_template_idx, formatter_idx=test_formatter_idx))
+        samples.extend(generate_keep_different_dimension_samples(n_diff_dim_test, template_idx=test_template_idx, formatter_idx=test_formatter_idx))
+        samples.extend(generate_keep_different_domain_samples(n_diff_domain_test, template_idx=test_template_idx, formatter_idx=test_formatter_idx))
+        samples.extend(generate_contextual_update_samples(n_contextual_test, template_idx=test_template_idx, formatter_idx=test_formatter_idx))
+
+        # 另一半用常规模板/格式
+        remaining = total - half
+        n_conflict_rem = int(remaining * 0.35)
+        n_attribute_rem = int(remaining * 0.10)
+        n_diff_dim_rem = int(remaining * 0.25)
+        n_diff_domain_rem = int(remaining * 0.15)
+        n_contextual_rem = remaining - n_conflict_rem - n_attribute_rem - n_diff_dim_rem - n_diff_domain_rem
+
+        samples.extend(generate_update_conflict_samples(n_conflict_rem))
+        samples.extend(generate_update_attribute_samples(n_attribute_rem))
+        samples.extend(generate_keep_different_dimension_samples(n_diff_dim_rem))
+        samples.extend(generate_keep_different_domain_samples(n_diff_domain_rem))
+        samples.extend(generate_contextual_update_samples(n_contextual_rem))
+    else:
+        samples = []
+        samples.extend(generate_update_conflict_samples(n_conflict))
+        samples.extend(generate_update_attribute_samples(n_attribute))
+        samples.extend(generate_keep_different_dimension_samples(n_diff_dim))
+        samples.extend(generate_keep_different_domain_samples(n_diff_domain))
+        samples.extend(generate_contextual_update_samples(n_contextual))
 
     random.shuffle(samples)
     return samples
@@ -602,9 +686,9 @@ def main():
     # ── Judge LoRA data ──
     print("=== Judge LoRA Data Generation ===")
 
-    judge_train = generate_judge_samples(2000, seed_value=42)
-    judge_val = generate_judge_samples(200, seed_value=123)
-    judge_test = generate_judge_samples(300, seed_value=456)
+    judge_train = generate_judge_samples(2000, seed_value=42, is_test=False)
+    judge_val = generate_judge_samples(200, seed_value=123, is_test=False)
+    judge_test = generate_judge_samples(300, seed_value=456, is_test=True)
 
     for name, data, path in [
         ("train", judge_train, os.path.join(judge_dir, "train.json")),
@@ -615,42 +699,41 @@ def main():
             json.dump(data, f, ensure_ascii=False, indent=2)
         print(f"  judge/{name}.json: {len(data)} samples")
 
-    update_count = sum(1 for s in judge_train if '"decision": "UPDATE"' in s["conversations"][2]["value"])
-    keep_count = sum(1 for s in judge_train if '"decision": "KEEP"' in s["conversations"][2]["value"])
+    update_count = sum(1 for s in judge_train if "UPDATE" in s["conversations"][2]["value"])
+    keep_count = sum(1 for s in judge_train if "KEEP" in s["conversations"][2]["value"])
     print(f"  Judge train decisions: UPDATE={update_count}, KEEP={keep_count}")
 
+    # 统计输入/输出模板多样性
+    input_prefixes = set()
+    output_formats = set()
+    for s in judge_train:
+        human_text = s["conversations"][1]["value"]
+        gpt_text = s["conversations"][2]["value"]
+        # 取前 4 个字作为输入前缀特征
+        input_prefixes.add(human_text[:4])
+        # 判断输出格式
+        if gpt_text.startswith("{"):
+            output_formats.add("JSON")
+        elif gpt_text.startswith("经判断"):
+            output_formats.add("natural")
+        elif "判断结果" in gpt_text:
+            output_formats.add("structured")
+        elif gpt_text.startswith("UPDATE") or gpt_text.startswith("KEEP"):
+            output_formats.add("concise")
+        else:
+            output_formats.add("other")
+    print(f"  Input template diversity: {len(input_prefixes)} distinct prefixes")
+    print(f"  Output format diversity: {output_formats}")
+
     # ── Poet LoRA data ──
-    print("\n=== Poet LoRA Data Generation ===")
-    random.seed(42)
-
-    poet_records = generate_poet_samples()
-
-    n_train = min(2000, len(poet_records))
-    n_val = min(200, len(poet_records) - n_train)
-    n_test = min(300, len(poet_records) - n_train - n_val)
-
-    poet_train = poet_records[:n_train]
-    poet_val = poet_records[n_train:n_train + n_val]
-    poet_test = poet_records[n_train + n_val:]
-
-    for name, data, path in [
-        ("train", poet_train, os.path.join(poet_dir, "train.json")),
-        ("val", poet_val, os.path.join(poet_dir, "val.json")),
-        ("test", poet_test, os.path.join(poet_dir, "test.json")),
-    ]:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        print(f"  poet/{name}.json: {len(data)} samples")
-
-    # Form distribution in poet train
-    form_counts = {}
-    for r in poet_train:
-        instruction = r["conversations"][1]["value"]
-        for form in POETRY_FORMS:
-            if form in instruction:
-                form_counts[form] = form_counts.get(form, 0) + 1
-                break
-    print(f"  Poet train form distribution: {form_counts}")
+    print("\n=== Poet LoRA Data ===")
+    poet_data_path = os.path.join(poet_dir, "train.json")
+    if os.path.exists(poet_data_path) and os.path.getsize(poet_data_path) > 0:
+        print(f"  poet/train.json already exists — skipping generation.")
+        print(f"  To regenerate, run: python scripts/generate_poet_data.py")
+    else:
+        print(f"  Poet data not found. Please generate it via Claude API:")
+        print(f"    ANTHROPIC_API_KEY=xxx python scripts/generate_poet_data.py")
 
     # ── dataset_info.json ──
     info_path = os.path.join(base_dir, "dataset_info.json")
@@ -680,21 +763,16 @@ def main():
         print(f"Judge sample (first 3 rounds):")
         for turn in sample["conversations"]:
             role = turn["from"]
-            val_preview = turn["value"][:80] + "..." if len(turn["value"]) > 80 else turn["value"]
-            print(f"  {role}: {val_preview}")
-
-    if poet_train:
-        sample = poet_train[0]
-        print(f"\nPoet sample (first 3 rounds):")
-        for turn in sample["conversations"]:
-            role = turn["from"]
-            val_preview = turn["value"][:80] + "..." if len(turn["value"]) > 80 else turn["value"]
+            val_preview = turn["value"][:100] + "..." if len(turn["value"]) > 100 else turn["value"]
             print(f"  {role}: {val_preview}")
 
     # ── Summary ──
     print("\n--- Data Generation Summary ---")
     print(f"Judge LoRA: {len(judge_train)} train + {len(judge_val)} val + {len(judge_test)} test = {len(judge_train) + len(judge_val) + len(judge_test)} total")
-    print(f"Poet LoRA:  {len(poet_train)} train + {len(poet_val)} val + {len(poet_test)} test = {len(poet_train) + len(poet_val) + len(poet_test)} total")
+    print(f"  - Input templates: 18 variants ({TEST_ONLY_TEMPLATE_START} train + {len(JUDGE_INPUT_TEMPLATES) - TEST_ONLY_TEMPLATE_START} test-only)")
+    print(f"  - Output formats: {len(JUDGE_OUTPUT_FORMATTERS)} variants ({TEST_ONLY_FORMATTER_START} train + {len(JUDGE_OUTPUT_FORMATTERS) - TEST_ONLY_FORMATTER_START} test-only)")
+    print(f"  - Entity pools: {len(PERSONS)} persons, {len(CITIES)} cities, {len(COMPANIES)} companies, {len(SCHOOLS)} schools, {len(PLACES)} places, {len(EVENTS)} events")
+    print(f"  - New sample type: contextual_update (15%)")
 
 
 if __name__ == "__main__":

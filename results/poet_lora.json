@@ -1,19 +1,29 @@
 {
-  "format_compliance": 0.0,
-  "rhyme_compliance": 0.196,
-  "topic_relevance": 0.312,
-  "diversity": 0.1407,
+  "format_compliance": 0.2704,
+  "rhyme_compliance": 0.3816,
+  "topic_relevance": 0.3124,
+  "diversity": 0.2892,
   "per_form_metrics": {
     "五言绝句": {
-      "count": 172,
-      "avg_format_compliance": 0.2153,
-      "avg_rhyme_compliance": 0.0
+      "count": 120,
+      "avg_format_compliance": 0.6529,
+      "avg_rhyme_compliance": 0.4333
     },
     "七言绝句": {
-      "count": 328,
-      "avg_format_compliance": 0.262,
-      "avg_rhyme_compliance": 0.2805
+      "count": 120,
+      "avg_format_compliance": 0.3894,
+      "avg_rhyme_compliance": 0.2
+    },
+    "五言律诗": {
+      "count": 117,
+      "avg_format_compliance": 0.1573,
+      "avg_rhyme_compliance": 0.3483
+    },
+    "七言律诗": {
+      "count": 120,
+      "avg_format_compliance": 0.3129,
+      "avg_rhyme_compliance": 0.3083
     }
   },
-  "total": 500
+  "total": 477
 }

@@ -1,0 +1,143 @@
+x$ python scripts/evaluate.py
+
+=== Judge Task: 300 test samples ===
+  Evaluating base model (/home/wt/models/Qwen2.5-1.5B-Instruct) ...
+    Done in 3.8s
+  Evaluating Judge LoRA (judge) ...
+    Done in 4.2s
+
+============================================================
+Error Analysis (Judge LoRA)
+============================================================
+
+Judge LoRA wrong predictions (0 cases):
+============================================================
+       Memory Conflict Detection: Base vs Judge LoRA
+============================================================
+Metric               Base Model      Judge LoRA      Delta
+------------------------------------------------------------
+Accuracy             0.6067          1.0000          +0.3933
+Precision            0.6067          1.0000          +0.3933
+Recall               1.0000          1.0000          +0.0000
+F1                   0.7552          1.0000          +0.2448
+Valid/Total          300/300           300/300
+
+Results saved to /home/wt/prism-lora1.x/results/judge_base.json, /home/wt/prism-lora1.x/results/judge_lora.json
+
+=== Poet Task: 477 test samples ===
+  Evaluating base model (/home/wt/models/Qwen2.5-1.5B-Instruct) ...
+    Done in 602.0s
+  Evaluating Poet LoRA (poet) ...
+    Done in 5.7s
+
+============================================================
+             Poet Task: Base Model vs Poet LoRA
+============================================================
+Metric                    Base Model      Poet LoRA       Delta
+-----------------------------------------------------------------
+Format Compliance         0.0021          0.2704          +0.2683
+Rhyme Compliance          0.2117          0.3816          +0.1699
+Topic Relevance           0.4067          0.3124          -0.0943
+Diversity                 0.3964          0.2892          -0.1072
+
+Per-form breakdown:
+  五言绝句:
+    Format: 0.1512 -> 0.6529 (n=120/120)
+    Rhyme:  0.0000 -> 0.4333
+  七言绝句:
+    Format: 0.1583 -> 0.3894 (n=120/120)
+    Rhyme:  0.0042 -> 0.2000
+  五言律诗:
+    Format: 0.1487 -> 0.1573 (n=117/117)
+    Rhyme:  0.3504 -> 0.3483
+  七言律诗:
+    Format: 0.1506 -> 0.3129 (n=120/120)
+    Rhyme:  0.2854 -> 0.3083
+
+============================================================
+Sample outputs comparison:
+============================================================
+
+Instruction: 写一首五言绝句，以登高为题。...
+  Base:  form=False, rhyme=False, topic=True
+         山高云自远，水阔鸟空飞。
+人登新世界，心旷神飞扬。...
+  Poet:  form=True, rhyme=True, topic=False
+         孤峰一径深，
+云外有清音。
+极目苍茫处，
+风尘不染心。...
+
+Instruction: 写一首七言律诗，以寒山为题。...
+  Base:  form=False, rhyme=True, topic=False
+         寒山暮色掩苍茫，松声风动响悠长。
+
+石径斜通云外路，桃花空照雨中香。
+
+禅心独坐听经卷，世事如棋局未央。
+
+莫问前程多坎坷，寒泉自洗旧尘凉。...
+  Poet:  form=False, rhyme=True, topic=False
+         寒山远上暮云深，古寺钟残不可寻。
+乱石高低迷客路，疏钟远近入秋林。
+孤猿啼断千峰雨，老树空留万壑阴。
+欲向禅房问因果，松风吹落海潮音。...
+
+Instruction: 模仿李白的风格，写一首关于离别的七言绝句。...
+  Base:  form=False, rhyme=False, topic=True
+         碧海青天离别难，孤帆远影碧空寒。
+天涯何处无芳草？唯有相思两依阑。...
+  Poet:  form=False, rhyme=False, topic=False
+         清风拂柳暮云平，古道长亭听笛声。
+此去青山千万里，烟波江上使人惊。...
+
+Results saved to /home/wt/prism-lora1.x/results/poet_base.json, /home/wt/prism-lora1.x/results/poet_lora.json
+
+=== Cross-Domain Evaluation ===
+  Judge subset: 100 examples
+  Poet subset: 100 examples
+
+[1/6] Base model -> Judge task...
+  Accuracy: 0.58, F1: 0.7342 (1.4s)
+
+[2/6] Judge LoRA -> Judge task...
+  Accuracy: 1.0, F1: 1.0 (1.3s)
+
+[3/6] Poet LoRA -> Judge task...
+  Accuracy: 0.58, F1: 0.7342 (1.9s)
+
+[4/6] Base model -> Poet task...
+  Form: 0.15, Rhyme: 0.17 (1.1s)
+
+[5/6] Poet LoRA -> Poet task...
+  Form: 0.2995, Rhyme: 0.3 (1.2s)
+
+[6/6] Judge LoRA -> Poet task...
+  Form: 0.1489, Rhyme: 0.155 (1.3s)
+
+Results saved to /home/wt/prism-lora1.x/results/cross_eval.json
+
+======================================================================
+                  Cross-Domain Specialization Matrix
+======================================================================
+
+Model                Conflict(Acc)    Conflict(F1)     Poet(Form)       Poet(Rhyme)
+----------------------------------------------------------------------
+Base Model           0.5800           0.7342           0.1500           0.1700
+Judge LoRA           1.0000           1.0000           0.1489           0.1550
+Poet LoRA            0.5800           0.7342           0.2995           0.3000
+
+======================================================================
+Specialization Analysis (4 Conditions):
+  Condition 1: Judge LoRA improves on judge task (delta > 0): PASS (base=0.5800 -> judge=1.0000, delta=+0.4200)
+  Condition 2: Poet LoRA does NOT improve on judge task (|delta| < 0.05): PASS (base=0.5800 -> poet=0.5800, delta=+0.0000)
+  Condition 3: Poet LoRA improves on poet task (delta > 0): PASS (base=0.1500 -> poet=0.2995, delta=+0.1495)
+  Condition 4: Judge LoRA does NOT improve on poet task (|delta| < 0.05): PASS (base=0.1500 -> judge=0.1489, delta=-0.0011)
+
+  Overall: TRUE SPECIALIZATION
+  -> LoRA adapters achieved domain-specific enhancement without interfering with other domains.
+Generating evaluation result plots...
+  Saved: /home/wt/prism-lora1.x/results/judge_comparison.png
+  Saved: /home/wt/prism-lora1.x/results/poet_comparison.png
+  Saved: /home/wt/prism-lora1.x/results/cross_domain_heatmap.png
+Done! All plots saved to: /home/wt/prism-lora1.x/results
