@@ -191,11 +191,11 @@ def plot_cross_domain_heatmap(output_dir: str) -> None:
         data.get("poet_judge", {}).get("accuracy", 0),
     ]
 
-    # Poet task scores (form compliance), row order: base, poet, judge
+    # Poet task scores (form compliance), row order: base, judge, poet
     poet_scores = [
         data.get("base_poet", {}).get("avg_form_compliance", 0),
-        data.get("poet_poet", {}).get("avg_form_compliance", 0),
         data.get("judge_poet", {}).get("avg_form_compliance", 0),
+        data.get("poet_poet", {}).get("avg_form_compliance", 0),
     ]
 
     matrix = np.array([judge_scores, poet_scores]).T  # 3x2
