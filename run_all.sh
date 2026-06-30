@@ -76,5 +76,5 @@ echo ""
 
 echo "========================================="
 echo "  All steps completed!"
-echo "  Report: results/comparison.md"
+echo "  Report: results/report.md"
 echo "========================================="
